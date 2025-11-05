@@ -1,0 +1,36 @@
+#!/bin/bash
+PORT="${1:-8000}"
+
+BLACK='\033[0;30m'
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+MAGENTA='\033[0;35m'
+CYAN='\033[0;36m'
+WHITE='\033[1;37m'
+NC='\033[0m'   # Reset color
+
+COMPUTERCOLOR=$WHITE
+PORTCOLOR=$YELLOW
+ATCOLOR=$CYAN
+
+echo -e "${COMPUTERCOLOR}     _________"
+echo -e "    / ======= \\"
+echo -e "   / __________\\"
+echo -e "  | ___________ |"
+echo -e "  | |         | |"
+echo -e "  | |  ${ATCOLOR}@${NC}${PORTCOLOR}$PORT${COMPUTERCOLOR}  | |"
+echo -e "  | |_________| |"
+echo -e "  \\_____________/"  
+echo -e "  / \"\"\"\"\"\"\"\"\"\"\" \\"
+echo -e " / ::::::::::::: \\"
+echo -e "(_________________)${NC}"
+echo ""
+
+IP=$(ip -4 addr show tun0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
+
+echo -e "${YELLOW}Serving on http://$IP:$PORT ..."
+
+python3 -m http.server "$PORT"
+
