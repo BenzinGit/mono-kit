@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Simple RDP connection script
+# Usage: rdp IP
+
+usage() {
+  echo "Usage: $(basename "$0") [IP] [USERNAME] [PASSWORD]"
+  echo "  IP defaults to \$ip if omitted."
+  echo "  If USERNAME or PASSWORD are omitted, you will be prompted."
+}
+
+
+
+
+RED="\033[38;2;220;50;47m"
+YELLOW="\033[38;2;255;215;0m"
+BLUE="\033[38;2;70;130;180m"
+GREEN="\033[38;2;0;200;0m"
+NC="\033[0m" # No Color (reset)
+
+echo""
+
+
+echo -e "${GREEN}                   .oodMMMMMMMMMMMMM"
+echo -e "${RED}       ..oodMMM${GREEN}  MMMMMMMMMMMMMMMMMMM"
+echo -e " ${RED}oodMMMMMMMMMMM  ${GREEN}MMMMMMMMMMMMMMMMMMM"
+echo -e " ${RED}MMMMMMMMMMMMMM  ${GREEN}MMMMMMMMMMMMMMMMMMM"
+echo -e " ${RED}MMMMMMMMMMMMMM  ${GREEN}MMMMMMMMMMMMMMMMMMM"
+echo -e " ${RED}MMMMMMMMMMMMMM  ${GREEN}MMMMMMMMMMMMMMMMMMM"
+echo -e " ${RED}MMMMMMMMMMMMMM  ${GREEN}MMMMMMMMMMMMMMMMMMM"
+echo -e " ${RED}MMMMMMMMMMMMMM  ${GREEN}MMMMMMMMMMMMMMMMMMM"
+echo -e " "
+echo -e " ${BLUE}MMMMMMMMMMMMMM  ${YELLOW}MMMMMMMMMMMMMMMMMMM"
+echo -e " ${BLUE}MMMMMMMMMMMMMM  ${YELLOW}MMMMMMMMMMMMMMMMMMM"
+echo -e " ${BLUE}MMMMMMMMMMMMMM  ${YELLOW}MMMMMMMMMMMMMMMMMMM"
+echo -e " ${BLUE}MMMMMMMMMMMMMM  ${YELLOW}MMMMMMMMMMMMMMMMMMM"
+echo -e " ${BLUE}MMMMMMMMMMMMMM  ${YELLOW}MMMMMMMMMMMMMMMMMMM"
+echo -e " ${BLUE}\`^^^^^^MMMMMMM  ${YELLOW}MMMMMMMMMMMMMMMMMMM"
+echo -e "           ${BLUE}````^^^^  ${YELLOW}^^MMMMMMMMMMMMMMMMM"
+echo -e "                          ${YELLOW}````^^^^^^MMMM${NC}"
+
+command -v xfreerdp3 >/dev/null || { echo "xfreerdp3 not found"; exit 1; }
+
+
+TARGET="${1:-${ip:-}}"
+USERIN="${2:-}"
+PASSIN=""
+HASHIN=""
+
+[[ -z "$TARGET" || -z "$USERIN" ]] && usage
+
+
+# Case 1: hash mode
+if [[ "$3" == "-H" ]]; then
+  HASHIN="${4:-}"
+  [[ -z "$HASHIN" ]] && usage
+  echo "With Hash"
+  exec xfreerdp3 /v:"$TARGET" /u:"$USERIN" /pth:"$HASHIN" +clipboard /dynamic-resolution
+fi
+
+# Case 2: password mode
+PASSIN="${3:-}"
+if [[ -z "$PASSIN" ]]; then
+  echo "With Password"
+  read -s -p "Password: " PASSIN
+  echo
+fi
+
+exec xfreerdp3 /v:"$TARGET" /u:"$USERIN" /p:"$PASSIN" /dynamic-resolution
