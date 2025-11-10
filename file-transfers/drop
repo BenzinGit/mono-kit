@@ -50,37 +50,29 @@ if [[ -z "$FILE" || ! -f "$FILE" ]]; then
 fi
 
 
-IP="${IP:-}"
-
+IP=${IP:-}
 
 # 1) try tun0 if not provided
-if [[ -z "$IP" ]]; then
-  IP="$( ip -br addr show dev tun0 2>/dev/null \
-        | awk '{print $3}' | cut -d/ -f1 || true )"
-  [[ -n "$IP" ]]
+if [[ -z $IP ]] && ip -br addr show dev tun0 &>/dev/null; then
+  IP="$(ip -br -4 addr show dev tun0 | awk '{print $3}' | cut -d/ -f1)"
 fi
 
-
 # 2) default-route source IP
-if [[ -z "$IP" ]]; then
-  IP="$( ip route get 1.1.1.1 2>/dev/null \
-        | awk '{for(i=1;i<=NF;i++) if ($i=="src") {print $(i+1); exit}}' || true )"
-  [[ -n "$IP" ]]
+if [[ -z $IP ]]; then
+  IP="$(ip route get 1.1.1.1 2>/dev/null \
+        | awk '{for(i=1;i<=NF;i++) if ($i=="src") {print $(i+1); exit}}')"
 fi
 
 # 3) first non-loopback global IPv4
-if [[ -z "$IP" ]]; then
-  IP="$( ip -4 -br addr show scope global 2>/dev/null \
-        | awk '{print $3}' | cut -d/ -f1 | head -n1 || true )"
-  [[ -n "$IP" ]]
+if [[ -z $IP ]]; then
+  IP="$(ip -4 -br addr show scope global 2>/dev/null \
+        | awk '{print $3}' | cut -d/ -f1 | head -n1)"
 fi
 
-
-if [[ -z "$IP" ]]; then
+if [[ -z $IP ]]; then
   echo "[-] Could not determine an attacker/machine IP. Export \$IP, connect VPN (tun0), or ensure an interface has an IPv4 address." >&2
   exit 1
 fi
-
 
 BASE="$(basename "$FILE")"
 DIR="$(cd "$(dirname "$FILE")" 2>/dev/null || pwd)"
